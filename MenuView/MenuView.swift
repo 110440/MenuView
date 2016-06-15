@@ -1,6 +1,5 @@
 //
 //  MenuView.swift
-//  ScreenEdgePanGesture
 //
 //  Created by tanson on 16/5/4.
 //  Copyright © 2016年 tanson. All rights reserved.
@@ -12,42 +11,43 @@ private let viewAlpha:CGFloat = 0.7
 private let screentSize = UIScreen.mainScreen().bounds.size
 
 
-class MenuView: UIView ,UITableViewDataSource ,UITableViewDelegate{
+class MenuView: UIView {
 
-    var menuWidth:CGFloat = 0
+    var edgePanGestureRecognizer:UIScreenEdgePanGestureRecognizer!
+    var animateTabBar = true
+    var showViewWidth:CGFloat = 0
     var startX:CGFloat = 0
     
+    //底下黑色遮挡层
     lazy var backView:UIView = {
         let view = UIView(frame: self.bounds)
         view.alpha = 0
         view.backgroundColor = UIColor.blackColor()
+        //点击收回menu
         let tap = UITapGestureRecognizer(target: self, action: #selector(self.tap(_:)))
         tap.numberOfTapsRequired = 1
         view.addGestureRecognizer(tap)
         return view
     }()
     
-    lazy var tableView:UITableView = {
+    lazy var contentView:UIView = {
         let h = self.bounds.height
-        let tableViewRect = CGRect(x: -self.menuWidth, y: 0, width: self.menuWidth, height: h)
-        let view = UITableView(frame: tableViewRect, style: .Grouped)
-        view.dataSource = self
-        view.delegate = self
-        view.registerClass(UITableViewCell.self, forCellReuseIdentifier: "cell")
+        let tableViewRect = CGRect(x: -self.showViewWidth, y: 0, width: self.showViewWidth, height: h)
+        let view = UIView(frame: tableViewRect)
+        view.backgroundColor = UIColor.darkGrayColor()
         return view
     }()
     
-    init(w:CGFloat,h:CGFloat){
+    init(frame:CGRect,showViewWidth:CGFloat){
         
-        self.menuWidth = w
-        let rect = UIScreen.mainScreen().bounds
-        super.init(frame: rect)
-        
-        self.userInteractionEnabled = false
+        self.showViewWidth = showViewWidth
+        super.init(frame: frame)
 
+        self.userInteractionEnabled = false
         self.addSubview(self.backView)
-        self.addSubview(self.tableView)
+        self.addSubview(self.contentView)
         
+        //滑动弹出的 menu
         let pan = UIPanGestureRecognizer(target: self, action: #selector(self.pan(_:)))
         self.addGestureRecognizer(pan)
     }
@@ -60,19 +60,24 @@ class MenuView: UIView ,UITableViewDataSource ,UITableViewDelegate{
         didSet{
             let screenEdgeRecognizer = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(self.edgePan(_:)))
             screenEdgeRecognizer.edges = .Left
+            self.edgePanGestureRecognizer = screenEdgeRecognizer
             if let target = delegate as? UIViewController{
                 target.view.addGestureRecognizer(screenEdgeRecognizer)
             }else if let target = delegate as? UIView{
                 target.addGestureRecognizer(screenEdgeRecognizer)
             }
+
+            let showView = delegate!.viewToShowForMenuView(self)
+            showView.frame = self.contentView.bounds
+            self.contentView.addSubview(showView)
         }
     }
     
     func showMenu(speed:CGFloat = 600){
         
-        let d = Double(abs(self.tableView.frame.minX) / speed)
+        let d = Double(abs(self.contentView.frame.minX) / speed)
         UIView.animateWithDuration(d, animations: {
-            self.tableView.frame.origin.x = 0
+            self.contentView.frame.origin.x = 0
             self.backView.alpha = viewAlpha
             self.tabBar?.alpha = 0
             self.tabBar?.frame.origin.y = screentSize.height
@@ -83,9 +88,9 @@ class MenuView: UIView ,UITableViewDataSource ,UITableViewDelegate{
     
     func hideMenu(speed:CGFloat = 800){
         
-        let d = Double(abs(self.tableView.frame.maxX) / speed)
+        let d = Double(abs(self.contentView.frame.maxX) / speed)
         UIView.animateWithDuration(d, animations: {
-            self.tableView.frame.origin.x = -self.menuWidth
+            self.contentView.frame.origin.x = -self.showViewWidth
             self.backView.alpha = 0
             
             if let tabBar = self.tabBar{
@@ -98,6 +103,7 @@ class MenuView: UIView ,UITableViewDataSource ,UITableViewDelegate{
     }
     
     private var tabBar:UITabBar?{
+        if self.animateTabBar == false { return nil }
         let vc = self.delegate as? UIViewController
         return vc?.tabBarController?.tabBar
     }
@@ -110,6 +116,19 @@ class MenuView: UIView ,UITableViewDataSource ,UITableViewDelegate{
             tabBar.frame.origin.y = y
             tabBar.alpha = 1 - p * viewAlpha
         }
+    }
+    
+    // x = (-self.showViewWidth ~ 0 )
+    private func panChangedAction(showViewX:CGFloat){
+        var x = min(0, showViewX)
+        x = max(x, -self.showViewWidth)
+        self.contentView.frame.origin.x = x
+        
+        //完成百分比
+        let p = (self.showViewWidth + x)/self.showViewWidth
+        self.backView.alpha = p * viewAlpha
+        self.showTabBarByPercentage(p)
+        self.delegate?.MenuViewShowPercentage?(Float(p))
     }
     
     //MARK: GestureRecognizer action
@@ -130,27 +149,16 @@ class MenuView: UIView ,UITableViewDataSource ,UITableViewDelegate{
             let location = sender.locationInView(self)
             let dx = location.x - self.startX
             self.startX = location.x
-            
-            // x (-self.menuWidth ~ 0 )
-            var x = self.tableView.frame.origin.x + dx
-            x = min(0, x)
-            x = max(x, -self.menuWidth)
-            self.tableView.frame.origin.x = x
-            
-            //完成百分比
-            let p = abs(self.menuWidth + x) / self.menuWidth
-            self.backView.alpha = p * viewAlpha
-            
-            //move tabBar
-            self.showTabBarByPercentage(p)
-            
-            self.delegate?.MenuViewShowPercentage?(Float(p))
+            let x = self.contentView.frame.origin.x + dx
+            self.panChangedAction(x)
 
         }else if state == .Cancelled || state == .Ended {
             let v = sender.velocityInView(self.backView)
             if v.x <= -300 {
                 self.hideMenu(abs(v.x))
-            }else if self.tableView.frame.minX < -self.menuWidth/2 {
+            }else if v.x > 300{
+                self.showMenu(v.x)
+            }else if self.contentView.frame.minX < -self.showViewWidth/2 {
                 self.hideMenu()
             }else{
                 self.showMenu()
@@ -162,27 +170,15 @@ class MenuView: UIView ,UITableViewDataSource ,UITableViewDelegate{
     func edgePan(sender: UIScreenEdgePanGestureRecognizer){
         if sender.state == .Began || sender.state == .Changed{
             let location = sender.locationInView(self.superview)
-
-            // x (-self.menuWidth ~ 0 )
-            var x = -self.menuWidth + location.x
-            x = min(0, x)
-            x = max(x, -self.menuWidth)
-            self.tableView.frame.origin.x = x
-            
-            //完成百分比
-            let p = (self.menuWidth + x)/self.menuWidth
-            self.backView.alpha = p * viewAlpha
-            
-            self.showTabBarByPercentage(p)
-            
-            self.delegate?.MenuViewShowPercentage?(Float(p))
+            let x = -self.showViewWidth + location.x
+            self.panChangedAction(x)
             
         }else if sender.state == .Cancelled || sender.state == .Ended{
             let location = sender.locationInView(self.superview)
             let v = sender.velocityInView(self.superview)
             if v.x > 300 {
                 self.showMenu(v.x)
-            }else if location.x >= self.menuWidth/2{
+            }else if location.x >= self.showViewWidth/2{
                 self.showMenu()
             }else{
                 self.hideMenu()
@@ -190,45 +186,10 @@ class MenuView: UIView ,UITableViewDataSource ,UITableViewDelegate{
         }
     }
     
-    //MARK:- tableView delegate
-    func numberOfSectionsInTableView(tableView: UITableView) -> Int {
-        return self.delegate?.numberOfSectionsForMenuView(self) ?? 0
-    }
-    func tableView(tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return self.delegate?.numberOfRowsInSectionForMenuView(self, section: section) ?? 0
-    }
-    func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCellWithIdentifier("cell",forIndexPath: indexPath)
-        self.delegate?.menuView(self, willShowCell: cell, indexPath: indexPath)
-        return cell
-    }
-
-    func tableView(tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        return self.delegate?.menuView?(self, titleForHeaderInSection: section) ?? ""
-    }
-    
-    func tableView(tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat{
-        if section == 0{
-            return 0.1
-        }
-        return 20
-    }
-    
-    func tableView(tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat{
-        return 10
-    }
-    
-    func tableView(tableView: UITableView, didSelectRowAtIndexPath indexPath: NSIndexPath) {
-        self.delegate?.menuView?(self, selectRowAtIndexPath: indexPath)
-    }
 }
 
 //MARK:- Menuview protocol
 @objc protocol MenuViewDeleaget:NSObjectProtocol {
     optional func MenuViewShowPercentage(p:Float)
-    func numberOfSectionsForMenuView(view:MenuView)->Int
-    func numberOfRowsInSectionForMenuView(view:MenuView ,section: Int)->Int
-    func menuView(view:MenuView,willShowCell cell:UITableViewCell,indexPath:NSIndexPath)->Void
-    optional func menuView(view:MenuView , titleForHeaderInSection section: Int)->String?
-    optional func menuView(view:MenuView, selectRowAtIndexPath indexPath:NSIndexPath)->Void
+    func viewToShowForMenuView(menu:UIView)->UIView
 }

@@ -8,50 +8,64 @@
 
 import UIKit
 
-let viewWidth:CGFloat = 300
 
-class ViewController: UIViewController ,UITableViewDataSource,MenuViewDeleaget{
+private let profileViewWidth:CGFloat = UIScreen.mainScreen().bounds.width * 2/3
 
+class ViewController: UIViewController ,MenuViewDeleaget,UITableViewDataSource{
+
+    
+    var menu: MenuView!
+    
+    lazy var profileView:UITableView = {
+        let view = UITableView(frame: CGRectZero, style: .Grouped)
+        view.dataSource = self
+        
+        let headView = UIView(frame: CGRect(x: 0, y: 0, width: profileViewWidth, height: profileViewWidth * 2/3 ))
+        headView.backgroundColor = UIColor.redColor()
+        view.tableHeaderView = headView
+        return view
+    }()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
+        self.title = "主页"
         
-        let tableView = UITableView(frame: self.view.bounds)
-        tableView.dataSource = self
-        self.view.addSubview(tableView)
-        
-        let menu = MenuView(w:viewWidth, h: self.view.bounds.height)
+        self.setupMenuView()
+    }
+
+    
+    func setupMenuView(){
+        let menu = MenuView(frame: self.view.bounds, showViewWidth:profileViewWidth)
         menu.delegate = self
         self.view.addSubview(menu)
     }
-
-    //MARK: tableView delegate
-
-    func numberOfSectionsInTableView(tableView: UITableView) -> Int {
-        return 1
+    
+    //MARK: menu delegate
+    func viewToShowForMenuView(menu: UIView) -> UIView {
+        return self.profileView
     }
+    
+    //MARK: profile tableView Delegate
+    var profileCellName = [["资料","文章","收藏","好友"],["设置"]]
+    func numberOfSectionsInTableView(tableView: UITableView) -> Int {
+        return profileCellName.count
+    }
+    
     func tableView(tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return 10
+        return profileCellName[section].count
     }
     
     func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
-        let cell = UITableViewCell(style: .Default, reuseIdentifier: "cell")
-        cell.textLabel?.text = "sssss\(indexPath.row)"
-        return cell
+        var cell = tableView.dequeueReusableCellWithIdentifier("cell")
+        if cell == nil{
+            cell = UITableViewCell(style: .Default, reuseIdentifier: "cell")
+        }
+        
+        cell?.accessoryType = .DisclosureIndicator
+        cell?.textLabel?.text = profileCellName[indexPath.section][indexPath.row]
+        return cell!
     }
-    
-    ///MenuView delegate
-    func numberOfSectionsForMenuView(view: MenuView) -> Int {
-        return 2
-    }
-    func numberOfRowsInSectionForMenuView(view: MenuView, section: Int) -> Int {
-        return 3
-    }
-    func menuView(view: MenuView, willShowCell cell: UITableViewCell, indexPath: NSIndexPath) {
-        cell.textLabel?.text = "收件箱"
-    }
-    func menuView(view: MenuView, selectRowAtIndexPath indexPath: NSIndexPath) {
-        print("select at \(indexPath.row)")
-    }
+
 
 }
 
